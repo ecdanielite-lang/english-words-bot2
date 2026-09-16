@@ -9,6 +9,7 @@ import datetime
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.request import HTTPXRequest
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -186,7 +187,13 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ BOT STARTUP ============
 async def run_bot_async():
-    app = Application.builder().token(BOT_TOKEN).build()
+    request = HTTPXRequest(
+        connect_timeout=30.0,
+        read_timeout=30.0,
+        write_timeout=30.0,
+        pool_timeout=30.0,
+    )
+    app = Application.builder().token(BOT_TOKEN).request(request).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("news", news_command))
     app.add_handler(CommandHandler("local", local_command))
@@ -195,7 +202,16 @@ async def run_bot_async():
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_error_handler(error_handler)
 
-    await app.initialize()
+    for attempt in range(5):
+        try:
+            await app.initialize()
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ initialize() attempt {attempt + 1}/5 failed: {e}")
+            if attempt == 4:
+                raise
+            await asyncio.sleep(5)
+
     await app.start()
     await app.updater.start_polling(
         allowed_updates=Update.ALL_TYPES,
@@ -210,5 +226,9 @@ def run_bot():
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run_bot_async())
 
-bot_thread = threading.Thread(target=run_bot, daemon=True)
-bot_thread.start()
+if __name__ == '__main__':
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+
+    port = int(os.environ.get("PORT", 8080))
+    flask_app.run(host="0.0.0.0", port=port)
