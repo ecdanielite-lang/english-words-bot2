@@ -226,9 +226,14 @@ def run_bot():
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run_bot_async())
 
-if __name__ == '__main__':
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
+# Start the bot thread at import time — Railway runs this via
+# `gunicorn bot:flask_app`, which imports this module directly and never
+# executes `if __name__ == '__main__':`, so the thread must start here.
+bot_thread = threading.Thread(target=run_bot, daemon=True)
+bot_thread.start()
 
+if __name__ == '__main__':
+    # Only used for local testing (python bot.py). On Railway, gunicorn
+    # handles serving flask_app and $PORT binding via the Procfile.
     port = int(os.environ.get("PORT", 8080))
     flask_app.run(host="0.0.0.0", port=port)
